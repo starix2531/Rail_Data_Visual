@@ -1,0 +1,345 @@
+---
+title: "Data visualization"
+author: "sch"
+date: "11/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+##input data, packages installation
+library(ggplot2)
+library(dplyr)
+library(magrittr)
+library(readxl)
+library('scales')
+dataset_visualization_ <- read_excel("test2.xlsx") ##insert the excel file
+View(dataset_visualization_)
+monthweeks <- function(x) {
+    UseMethod("monthweeks")
+}
+monthweeks.Date <- function(x) {
+    ceiling(as.numeric(format(x, "%d")) / 7)
+}
+monthweeks.POSIXlt <- function(x) {
+    ceiling(as.numeric(format(x, "%d")) / 7)
+}
+monthweeks.character <- function(x) {
+    ceiling(as.numeric(format(as.Date(x), "%d")) / 7)
+}
+
+dataset_visualization_ =dataset_visualization_%>%mutate(month=months(dataset_visualization_$start_time,abbreviate = TRUE))
+dataset_visualization_ =dataset_visualization_%>%mutate(Date=as.Date(dataset_visualization_$start_time))
+dataset_visualization_ =dataset_visualization_%>%mutate(WOM=monthweeks(dataset_visualization_$Date))
+
+
+##Time Scale Selection 
+date1 <- "2021-01-15" #Start
+date2 <- "2021-07-15" #End
+dataset_visualization_ =dataset_visualization_%>%filter(Date>date1)%>%filter(Date<date2)
+```
+
+
+
+
+##Monthly Trespassing Event Totals
+```{r pressure, echo=FALSE}
+##Monthly Trespassing Event Total
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)
+#fig(20,8)
+baselayer =  ggplot( aes(factor(month,levels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')),fill = type),data = dataset1)+
+  geom_bar(stat="count", position='dodge',width = 0.5)+  # Dodge for group
+ labs(x="Month/Type",
+         y="count", 
+       title="Monthly Trespassing Event Totals: ") +
+theme_bw()#+
+  geom_text(aes(label=type)) #+
+theme(plot.title = element_text(size=18),axis.text.x= element_text(size=15,angle=90),
+                            axis.text.y= element_text(size=15), axis.title=element_text(size=18))
+
+plot(baselayer)
+```
+
+##Monthly Trespassing Event Totals(seperated by type)
+```{r}
+#fig(12,8)
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)
+ggplot(dataset_visualization_, aes(factor(month,levels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'))))+
+geom_bar(stat="count", width = 0.5,aes(fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Distribution of Trespass in General")+ 
+facet_wrap(~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=8,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+
+##Trespassing Event Totals Day of Hour(In one month)
+```{r}
+#fig(12,8)
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)%>% filter(month == 'Jul') ## choose month
+
+ggplot(dataset1, aes(as.integer(HOD)))+
+geom_bar(stat="count", width = 0.5,aes(fill=type))+xlim(0,23)+
+ labs(x="Hour of the Day",
+         y="Count", 
+       title="Monthly Trespassing Event Totals Day of Hour: Jan")+ 
+facet_wrap(~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=6,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+##Heatap of the tresspass in one month
+```{r}
+#Change the following parameters to select the month
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)%>% filter(month == 'Jun')
+#
+dataset1 = dataset1%>% group_by(WOM,DOW,HOD,type)%>% summarise(across(.cols ='_id',list(num = length)))
+dataset2 = cbind(c(rep('car',840),rep('bus',840),rep('person',840),rep('truck',840),rep('bicycle',840)))
+dataset2 = cbind(dataset2,c(rep('week1',168),rep('week2',168),rep('week3',168),rep('week4',168),rep('week5',168)))
+dataset3 = cbind(c(rep('Mon',24),rep('Tue',24),rep('Wed',24),rep('Thu',24),rep('Fri',24),rep('Sat',24),rep('Sun',24)))
+dataset2 = cbind(dataset2,rep(dataset3,5))
+dataset3 = cbind(1:24)
+dataset_final = cbind(dataset2,rep(dataset3,175),rep(0,4200))
+n = nrow(dataset1)
+for (i in 1:n) {
+  r = 0
+  t = dataset1[i,4]
+  w = dataset1[i,1]
+  d = dataset1[i,2]
+  h = dataset1[i,3]
+  x = dataset1[i,5]
+  w = as.integer(w)
+  d = as.integer(d)
+  h = as.integer(h)
+  x = as.integer(x)
+  if(t =='bus'){
+    r = r+840
+  }
+  if(t =='person'){
+    r = r+840*2
+  }
+  if(t =='truck'){
+    r = r+840*3
+  }
+  if(t =='bicycle'){
+    r = r+840*4
+  }
+  r =r + (w-1)*168 + (d-1)*24 + h + 1
+  dataset_final[r,5] = x
+}
+dataset_final= data.frame(type= dataset_final[,1],WOM = dataset_final[,2],DOW= dataset_final[,3],HOD= dataset_final[,4],num= dataset_final[,5])
+dataset_final[,5] = type.convert(dataset_final[,5])
+dataset_final[,4] = type.convert(dataset_final[,4])
+
+baselayer = ggplot(dataset_final,aes(HOD, factor(DOW,levels = c('Mon','Tue','Wed','Thu','Fri','Sat','Sun')),fill = num)) +
+ geom_tile() +
+ facet_grid(type~WOM)+
+ scale_fill_gradient(low = "white", high = "red", guide = "legend")+
+ labs(x="Hour of Day",
+       y="",
+       title = "Total Trespass Heatmap of A Month", 
+       fill="count")+
+ theme_bw()+
+ theme(plot.title = element_text(size=11)
+      ,axis.text.x= element_text(size = 6),
+       axis.text.y= element_text(size=6),
+        axis.title=element_text(size=9))
+baselayer
+```
+
+##Trespass Event by Week of the Month
+```{r}
+
+#fig(12,8)
+dataset1 = dataset_visualization_%>% filter(month == 'Jul') ##choose the certain month
+ggplot(dataset1, aes(factor(WOM)))+
+geom_bar(stat="count", width = 0.5,aes(fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Trespass Event by Week of the Month")+ 
+facet_wrap(~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=6,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+
+##Trespass Event by in a Week of the Month
+
+```{r}
+##choose the month and the num of the week in next line
+dataset1 = dataset_visualization_%>% filter(month == 'Jun')%>% filter(WOM == 3) 
+
+ggplot(dataset1, aes(factor(DOW)))+
+geom_bar(stat="count", width = 0.5,aes(fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Ramsey, NJ Detection Grade Crossing Trespass Event by Day of Hour: Jan")+ 
+facet_wrap(~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=8,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+##Trespass Event Day By Hour In A Certain Day
+```{r}
+
+##Select the Month And Week In following Line
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)%>% filter(month == 'Jul')%>% filter(WOM == 3)%>% filter(DOW == '1')
+
+#dataset1$HOD = as.numeric()
+ggplot(dataset1, aes(as.integer(HOD)))+xlim(0,23)+
+geom_bar(stat="count", width = 0.4,aes(fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Ramsey, NJ Detection Grade Crossing Trespass Event by Day by Hour: Jan")+ 
+facet_wrap(~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=8,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+##Total Weather Distribution(Hist)
+```{r}
+dataset_weather = dataset_visualization_%>% filter(Validation == TRUE) %>% group_by(weather) %>% summarise(across(.cols = 'Validation',list(num=length)))
+total = sum(dataset_weather[,2])
+dataset_weather$percentage<-(round((dataset_weather[,2])/total,2))
+
+
+ggplot(dataset_weather, aes(weather,Validation_num,fill=Validation_num))+
+geom_bar(stat="identity", width = 0.5)+
+geom_text(aes(label=Validation_num, vjust=0)) +
+scale_fill_gradient(low = "green", high = "red")+
+ labs(x="Weather",
+         y="Percentage", 
+       title="Distribution of Playstore Genres ")+ 
+theme_bw()+
+theme(plot.title = element_text(size=22),axis.text.x= element_text(size=15,angle=90),
+                            axis.text.y= element_text(size=15), axis.title=element_text(size=18))
+
+```
+
+##Total Weather Distribution(Pie)
+```{r}
+dataset_weather = dataset_visualization_%>% filter(Validation == TRUE) %>% group_by(weather) %>% summarise(across(.cols = 'Validation',list(num=length)))
+total = sum(dataset_weather[,2])
+dataset_weather$percentage<-(round(dataset_weather[,2]/total,2))
+dataset_weather[,2] = type.convert(dataset_weather[,2])
+dataset_weather[,3] = type.convert(dataset_weather[,3])
+
+ggplot(dataset_weather, aes(x = "", y=Validation_num, fill = weather)) + 
+  geom_bar(width = 1, stat = "identity") +coord_polar(theta = "y", start=0)+
+scale_fill_brewer(palette="Set2")+
+  labs(fill="weather", 
+       x=NULL, 
+       y=NULL, 
+       title="Pie Chart of Weather") +
+  theme(axis.ticks = element_blank()) +
+  theme(axis.text.x = element_blank())+ 
+geom_text(aes(label = percent(Validation_num/total)),size=3.5, position = position_stack(vjust = 0.4))+
+theme_void()+theme(plot.title = element_text(hjust=0.8,size=20))#+
+scale_y_continuous(breaks = dataset_weather$Validation_num)
+```
+
+##Monthly Weather/Tresspass
+```{r}
+#fig(12,8)
+dataset1 = dataset_visualization_%>% filter(Validation == TRUE)
+ggplot(dataset1, aes(month))+
+geom_bar(stat="count", width = 0.5,aes(type,fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Distribution of Trespass in General")+ 
+facet_grid(weather~month)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=8,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+
+```
+
+##Grade Total Crossing Trespass Detection(True And False)
+```{r}
+ ggplot( aes(month,fill = Validation),data = dataset_visualization_)+
+  geom_bar(stat="count", position='dodge',width = 0.5)#+  # Dodge for group
+ labs(x="Hour",
+         y="count", 
+       title="Ramsey, NJ Detection Grade Crossing Trespass Detection") +
+theme_bw()#+
+  geom_text(aes(label=type)) #+
+theme(plot.title = element_text(size=18),axis.text.x= element_text(size=15,angle=90),
+                            axis.text.y= element_text(size=15), axis.title=element_text(size=18))
+
+
+```
+
+##Grade Total Crossing Trespass Detection(False) by Type
+```{r}
+#fig(12,8)
+dataset1 = dataset_visualization_%>% filter(Validation == FALSE)
+ggplot(dataset1, aes(HOD))+
+geom_bar(stat="count", width = 0.5,aes(fill=type))+
+ labs(x="",
+         y="Count", 
+       title="Distribution of Netflix Shows in India,US,UK & Australia")+ 
+facet_grid(Explanation~type)+
+theme_bw()+
+theme(plot.title = element_text(size=11),axis.text.x= element_text(size=8,angle=90),
+                            axis.text.y= element_text(size=8), axis.title=element_text(size=9))
+```
+##Grade Crossing Trespass Detection(False) By Type In One Month
+```{r}
+#Change the following parameters to select the month
+dataset1 = dataset_visualization_%>% filter(Validation == FALSE)%>% filter(month == 'Jul')
+#
+dataset1 = dataset1%>% group_by(WOM,DOW,HOD,type)%>% summarise(across(.cols ='_id',list(num = length)))
+dataset2 = cbind(c(rep('car',840),rep('bus',840),rep('person',840),rep('truck',840),rep('bicycle',840)))
+dataset2 = cbind(dataset2,c(rep('week1',168),rep('week2',168),rep('week3',168),rep('week4',168),rep('week5',168)))
+dataset3 = cbind(c(rep('Mon',24),rep('Tue',24),rep('Wed',24),rep('Thu',24),rep('Fri',24),rep('Sat',24),rep('Sun',24)))
+dataset2 = cbind(dataset2,rep(dataset3,5))
+dataset3 = cbind(1:24)
+dataset_final = cbind(dataset2,rep(dataset3,175),rep(0,4200))
+n = nrow(dataset1)
+for (i in 1:n) {
+  r = 0
+  t = dataset1[i,4]
+  w = dataset1[i,1]
+  d = dataset1[i,2]
+  h = dataset1[i,3]
+  x = dataset1[i,5]
+  w = as.integer(w)
+  d = as.integer(d)
+  h = as.integer(h)
+  x = as.integer(x)
+  if(t =='bus'){
+    r = r+840
+  }
+  if(t =='person'){
+    r = r+840*2
+  }
+  if(t =='truck'){
+    r = r+840*3
+  }
+  if(t =='bicycle'){
+    r = r+840*4
+  }
+  r =r + (w-1)*168 + (d-1)*24 + h + 1
+  dataset_final[r,5] = x
+}
+dataset_final= data.frame(type= dataset_final[,1],WOM = dataset_final[,2],DOW= dataset_final[,3],HOD= dataset_final[,4],num= dataset_final[,5])
+dataset_final[,5] = type.convert(dataset_final[,5])
+dataset_final[,4] = type.convert(dataset_final[,4])
+
+baselayer = ggplot(dataset_final,aes(HOD, factor(DOW,levels = c('Mon','Tue','Wed','Thu','Fri','Sat','Sun')),fill = num)) +
+ geom_tile() +
+ facet_grid(type~WOM)+
+ scale_fill_gradient(low = "white", high = "red", guide = "legend")+
+ labs(x="Hour of Day",
+       y="",
+       title = "Total Trespass Heatmap of A Month", 
+       fill="count")+
+ theme_bw()+
+ theme(plot.title = element_text(size=11)
+      ,axis.text.x= element_text(size = 6),
+       axis.text.y= element_text(size=6),
+        axis.title=element_text(size=9))
+baselayer
+```
+
